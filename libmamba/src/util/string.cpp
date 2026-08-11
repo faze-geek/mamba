@@ -10,6 +10,7 @@
 #include <cwchar>
 #include <cwctype>
 #include <iterator>
+#include <ranges>
 #include <stdexcept>
 
 #include "mamba/util/string.hpp"
@@ -1075,16 +1076,17 @@ namespace mamba::util
         };
 
         // Mirror difflib.get_close_matches() implementation.
-        std::vector<Scored> scored;
-        scored.reserve(candidates.size());
-        for (const auto& candidate : candidates)
-        {
-            const double ratio = similarity_ratio(input, candidate);
-            if (ratio >= cutoff)
-            {
-                scored.push_back({ ratio, &candidate });
-            }
-        }
+        namespace views = std::ranges::views;
+
+        auto scored_view = candidates
+                           | views::transform(
+                               [&](const std::string& candidate) -> Scored
+                               { return { similarity_ratio(input, candidate), &candidate }; }
+                           )
+                           | views::filter([cutoff](const Scored& s) { return s.ratio >= cutoff; });
+
+        // TODO(C++23): std::ranges::to<std::vector>
+        auto scored = std::vector<Scored>(scored_view.begin(), scored_view.end());
 
         // difflib returns the n largest (ratio, candidate) pairs, so ties
         // are broken by the larger candidate string.
@@ -1101,13 +1103,9 @@ namespace mamba::util
             }
         );
 
-        std::vector<std::string> results;
-        const std::size_t count = std::min(max_results, scored.size());
-        results.reserve(count);
-        for (std::size_t i = 0; i < count; ++i)
-        {
-            results.push_back(*scored[i].value);
-        }
-        return results;
+        auto results_view = scored | views::take(max_results)
+                            | views::transform([](const Scored& s) { return *s.value; });
+        // TODO(C++23): std::ranges::to<std::vector>
+        return std::vector<std::string>(results_view.begin(), results_view.end());
     }
 }

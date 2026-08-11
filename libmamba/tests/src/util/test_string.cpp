@@ -635,9 +635,7 @@ namespace
                 REQUIRE(similarity_ratio("inof", "info") == Catch::Approx(0.75));
                 REQUIRE(similarity_ratio("ifno", "info") == Catch::Approx(0.75));
                 REQUIRE(similarity_ratio("rnu", "run") == Catch::Approx(0.666667).epsilon(1e-4));
-                REQUIRE(
-                    similarity_ratio("activ", "activate") == Catch::Approx(0.769231).epsilon(1e-4)
-                );
+                REQUIRE(similarity_ratio("activ", "activate") == Catch::Approx(0.769231).epsilon(1e-4));
                 REQUIRE(
                     similarity_ratio("reqoquery", "repoquery") == Catch::Approx(0.888889).epsilon(1e-4)
                 );
@@ -655,10 +653,11 @@ namespace
 
             SECTION("Ratio is bounded between 0 and 1")
             {
-                const char* words[] = { "install", "lst", "repoquery", "", "x", "activate" };
-                for (const auto* w1 : words)
+                constexpr std::array<std::string_view, 6> words = { "install", "lst", "repoquery",
+                                                                    "",        "x",   "activate" };
+                for (const auto& w1 : words)
                 {
-                    for (const auto* w2 : words)
+                    for (const auto& w2 : words)
                     {
                         const double ratio = similarity_ratio(w1, w2);
                         REQUIRE(ratio >= 0.0);
@@ -706,6 +705,14 @@ namespace
                 REQUIRE(matches.front() == "repoquery");
             }
 
+            SECTION("Upper-case letters are treated as distinct")
+            {
+                REQUIRE(
+                    similarity_ratio("Repoquery", "repoquery") == Catch::Approx(0.888889).epsilon(1e-4)
+                );
+                REQUIRE(closest_matches("Install", commands).front() == "install");
+            }
+
             SECTION("An exact match returns itself first")
             {
                 REQUIRE(closest_matches("list", commands).front() == "list");
@@ -724,21 +731,23 @@ namespace
             {
                 const auto matches = closest_matches("instal", commands, 0.6, 5);
                 REQUIRE(matches.size() >= 2);
-
-                double previous = 1.0;
+                std::vector<double> ratios;
+                ratios.reserve(matches.size());
                 for (const auto& m : matches)
                 {
-                    const double ratio = similarity_ratio(m, "instal");
-                    REQUIRE(ratio <= previous + 1e-9);
-                    previous = ratio;
+                    ratios.push_back(similarity_ratio(m, "instal"));
                 }
+                REQUIRE(std::is_sorted(ratios.begin(), ratios.end(), std::greater<>{}));
             }
 
             SECTION("max_results caps the number of suggestions")
             {
-                // A permissive cutoff matches several commands; cap to 2.
-                const auto matches = closest_matches("in", commands, 0.1, 2);
-                REQUIRE(matches.size() <= 2);
+                // A permissive cutoff matches several commands;
+                const auto matches = closest_matches("in", commands, 0.1, 100);
+                REQUIRE(matches.size() > 2);
+                // max_results caps the number of suggestions returned.
+                const auto matches_capped = closest_matches("in", commands, 0.1, 2);
+                REQUIRE(matches_capped.size() <= 2);
             }
 
             SECTION("The cutoff controls how permissive matching is")
